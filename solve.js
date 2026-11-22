@@ -31,10 +31,12 @@
 //     each found with indexOf;
 //   - a quoted field whose body holds no doubled quote and no line break
 //     is one slice.
-// The next-quote and next-CR positions are kept in monotonic caches
-// (qV is the first " at or after qF, crV the first CR at or after crF), so
-// repeated indexOf lookups stay amortised O(1) instead of rescanning the
-// tail of the text on quote-free or CR-free stretches. The per-character
+// The next-quote, next-CR and next-LF positions are kept in monotonic
+// caches (qV is the first " at or after qF, crV the first CR at or after
+// crF, nlV the first LF at or after nlF), so repeated indexOf lookups stay
+// amortised O(1) instead of rescanning the tail of the text on quote-free,
+// CR-free or LF-free stretches — an unquoted field no longer rescans to
+// the end of its line for an LF position its record already passed. The per-character
 // scans remain only where the semantics need them: stray CRs inside a
 // field, junk after a closing quote, and quoted bodies that hold doubled
 // quotes or line breaks.
@@ -68,6 +70,8 @@ export function run(input) {
   let qF = i;
   let crV = text.indexOf('\r', i);
   let crF = i;
+  let nlV = text.indexOf('\n', i);
+  let nlF = i;
 
   while (i < n) {
     recLine = line;
@@ -76,7 +80,8 @@ export function run(input) {
     let content = false;
 
     // ---- Fast path: a whole record on one simple line. ----
-    const le = text.indexOf('\n', i);
+    let le = nlV;
+    if (i < nlF || (le !== -1 && le < i)) { le = text.indexOf('\n', i); nlV = le; nlF = i; }
     const lineEnd = le === -1 ? n : le;
     let q = qV;
     if (i < qF || (q !== -1 && q < i)) { q = text.indexOf('"', i); qV = q; qF = i; }
@@ -170,7 +175,8 @@ export function run(input) {
             const from = i + 1;
             // Where the body's line breaks are (the LF scan and the CR
             // cache stay inside this record's span, so both are short).
-            const lfB = text.indexOf('\n', from);
+            let lfB = nlV;
+            if (from < nlF || (lfB !== -1 && lfB < from)) { lfB = text.indexOf('\n', from); nlV = lfB; nlF = from; }
             const lfIn = lfB !== -1 && lfB < close;
             let crB = crV;
             if (from < crF || (crB !== -1 && crB < from)) { crB = text.indexOf('\r', from); crV = crB; crF = from; }
@@ -210,7 +216,8 @@ export function run(input) {
                   const nq = text.indexOf('"', k);
                   if (nq !== -1 && nq < close) { s = nq; sk = 1; }
                 }
-                const nl = text.indexOf('\n', k);
+                let nl = nlV;
+                if (k < nlF || (nl !== -1 && nl < k)) { nl = text.indexOf('\n', k); nlV = nl; nlF = k; }
                 if (nl !== -1 && nl < close && (s === -1 || nl < s)) { s = nl; sk = 2; }
                 let cr = crV;
                 if (k < crF || (cr !== -1 && cr < k)) { cr = text.indexOf('\r', k); crV = cr; crF = k; }
@@ -286,7 +293,8 @@ export function run(input) {
         } else {
           // Unquoted field: it ends at the nearest comma, LF or CR.
           const nc = text.indexOf(',', i);
-          const nl = text.indexOf('\n', i);
+          let nl = nlV;
+          if (i < nlF || (nl !== -1 && nl < i)) { nl = text.indexOf('\n', i); nlV = nl; nlF = i; }
           let cr = crV;
           if (i < crF || (cr !== -1 && cr < i)) { cr = text.indexOf('\r', i); crV = cr; crF = i; }
           let end = n;
